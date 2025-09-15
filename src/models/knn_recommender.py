@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 FEAT_PATH  = ROOT / "data/processed/fma_small_feats_v2.parquet"
 INDEX_PATH = ROOT / "data/processed/fma_small_index.parquet"
+META_PATH  = ROOT / "data/processed/fma_small_meta.parquet"
 MODEL_PATH = ROOT / "artifacts/knn_audio_v2.joblib"
 
 
@@ -211,23 +212,135 @@ def display_reranked(seed_track_id: int, top: int = 10, index_path: Path = INDEX
     sub["score"] = [scores[order[tid]] for tid in sub["track_id"]]
     print(f"\nTop {top} (reranked) for seed {seed_track_id}:\n")
     print(sub.to_string(index=False))
+    
+def _load_meta() -> pd.DataFrame:
+    meta = pd.read_parquet(META_PATH)
+    # normalize types
+    meta["track_id"] = meta["track_id"].astype(int)
+    meta["genres_all"] = meta["genres_all"].apply(lambda x: x if isinstance(x, list) else [])
+    return meta.set_index("track_id")
 
+def _jaccard(a: set, b: set) -> float:
+    if not a and not b: return 1.0
+    if not a or not b:  return 0.0
+    inter = len(a & b); union = len(a | b)
+    return inter / union if union else 0.0
+
+def recommend_hybrid(
+    seed_track_id: int,
+    top: int = 50,
+    candidate_k: int = 200,
+    w_audio: float = 1.0,     # base similarity from KNN
+    w_genre: float = 0.35,    # Jaccard of genres_all
+    w_tempo: float = 0.15,    # closeness of BPM
+    w_year: float = 0.10,     # closeness of release year
+    artist_penalty: float = 0.05,   # diversity
+) -> tuple[list[int], list[float]]:
+    # 1) get audio-based candidates
+    rec_ids, dists = recommend(seed_track_id, k=candidate_k, feat_path=FEAT_PATH, model_path=MODEL_PATH)
+    audio_sim = 1.0 - np.clip(np.array(dists), 0.0, 1.0)
+
+    # 2) load metadata
+    meta = _load_meta()
+    if seed_track_id not in meta.index:
+        raise ValueError("Seed not found in metadata")
+    seed = meta.loc[seed_track_id]
+    seed_gen = set(seed.get("genres_all", []))
+    seed_tempo = seed.get("tempo")
+    seed_year  = seed.get("year")
+
+    # precompute candidate meta
+    pop = []
+    for tid in rec_ids:
+        m = meta.loc[tid] if tid in meta.index else None
+        p = float(np.log1p(m.get("listens", 0))) if m is not None else 0.0
+        pop.append(p)
+    # min-max normalize popularity over the candidate set (kept modest)
+    pop = np.array(pop, dtype=float)
+    rng = np.ptp(pop)
+    pop = (pop - pop.min()) / (rng + 1e-9)
+    w_pop = 0.05  # small tie-breaker
+
+    scores, artists = [], []
+    for i, tid in enumerate(rec_ids):
+        m = meta.loc[tid] if tid in meta.index else None
+        g = _jaccard(seed_gen, set(m.get("genres_all", []))) if m is not None else 0.0
+        # tempo/year similarity with soft kernels if both present
+        def soft(x, y, scale):
+            if x is None or pd.isna(x) or y is None or pd.isna(y): return 0.0
+            return float(np.exp(-abs(float(x) - float(y)) / scale))
+        t = soft(seed_tempo, (m.get("tempo") if m is not None else None), scale=30.0)  # ~±30 BPM tolerance
+        y = soft(seed_year,  (m.get("year")  if m is not None else None),  scale=10.0) # decade-ish
+
+        artist = (m.get("artist_name") if m is not None else "")
+        artists.append(artist)
+
+        score = (w_audio * float(audio_sim[i])
+                 + w_genre * g
+                 + w_tempo * t
+                 + w_year  * y
+                 + w_pop   * float(pop[i]))
+        scores.append(score)
+
+    # artist diversity (greedy downweight repeats)
+    final = []
+    seen_counts: dict[str, int] = {}
+    order = np.argsort(-np.array(scores))  # high → low
+    for j in order:
+        tid, sc, art = rec_ids[j], float(scores[j]), artists[j]
+        sc -= artist_penalty * seen_counts.get(art, 0)
+        final.append((tid, sc))
+        seen_counts[art] = seen_counts.get(art, 0) + 1
+        if len(final) == top:
+            break
+
+    final.sort(key=lambda x: -x[1])
+    return [tid for tid, _ in final], [sc for _, sc in final]
+
+def display_hybrid(seed_track_id: int, top: int = 10, index_path: Path = INDEX_PATH, w_audio=1.0, w_genre=0.35, w_tempo=0.15, w_year=0.10, artist_penalty=0.05, candidate_k=200) -> None:
+    rec_ids, scores = recommend_hybrid(seed_track_id, top=top, candidate_k=candidate_k,
+                                       w_audio=w_audio, w_genre=w_genre, w_tempo=w_tempo,
+                                       w_year=w_year, artist_penalty=artist_penalty)
+    idx_df = pd.read_parquet(index_path)
+    cols = ["track_id","artist_name","track_title","album_title","genre_top"]
+    if "track_genre_top" in idx_df.columns:
+        cols[-1] = "track_genre_top"
+    order = {tid:i for i, tid in enumerate(rec_ids)}
+    sub = idx_df[idx_df["track_id"].isin(rec_ids)][["track_id","artist_name","track_title","album_title", cols[-1]]].copy()
+    sub["order"] = sub["track_id"].map(order)
+    sub = sub.sort_values("order").drop(columns="order")
+    sub["score"] = [scores[order[tid]] for tid in sub["track_id"]]
+    print(f"\nTop {top} (hybrid: audio+meta) for seed {seed_track_id}:\n")
+    print(sub.to_string(index=False))
+    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="KNN MFCC recommender")
     parser.add_argument("--build", action="store_true", help="Fit and save the KNN model")
     parser.add_argument("--query", type=int, help="Seed track_id to query recommendations for")
+    parser.add_argument("--query-hybrid", type=int, help="Seed track_id to query with audio+metadata hybrid rerank")
     parser.add_argument("--top", type=int, default=10, help="How many recs to print in --query mode")
     parser.add_argument("--query-rerank", type=int, help="Seed track_id to query with genre/diversity re-rank")
     parser.add_argument("--genre-weight", type=float, default=0.15)
+    parser.add_argument("--w-audio", type=float, default=1.0)
+    parser.add_argument("--w-genre", type=float, default=0.35)
+    parser.add_argument("--w-tempo", type=float, default=0.15)
+    parser.add_argument("--w-year",  type=float, default=0.10)
     parser.add_argument("--artist-penalty", type=float, default=0.05)
     parser.add_argument("--candidate-k", type=int, default=200)
     args = parser.parse_args()
 
+    handled = False
     if args.build:
-        build_model()
+        build_model(); handled = True
     if args.query is not None:
-        display(args.query, top=args.top)
+        display(args.query, top=args.top); handled = True
     if getattr(args, "query_rerank", None) is not None:
-        display_reranked(args.query_rerank, top=args.top)
-    if (not args.build) and (args.query is None) and (getattr(args, "query_rerank", None) is None):
+        display_reranked(args.query_rerank, top=args.top); handled = True
+    if getattr(args, "query_hybrid", None) is not None:
+        display_hybrid(args.query_hybrid, top=args.top,
+                    w_audio=args.w_audio, w_genre=args.w_genre,
+                    w_tempo=args.w_tempo, w_year=args.w_year,
+                    artist_penalty=args.artist_penalty, candidate_k=args.candidate_k)
+        handled = True
+    if not handled:
         parser.print_help()
