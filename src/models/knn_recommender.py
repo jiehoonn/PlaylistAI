@@ -22,9 +22,11 @@ from src.utils.logging import get_logger
 
 log = get_logger(__name__)
 
-FEAT_PATH = Path("data/processed/fma_small_mfcc.parquet")
-INDEX_PATH = Path("data/processed/fma_small_index.parquet")
-MODEL_PATH = Path("artifacts/knn_audio_mfcc.joblib")
+ROOT = Path(__file__).resolve().parents[2]
+
+FEAT_PATH  = ROOT / "data/processed/fma_small_feats_v2.parquet"
+INDEX_PATH = ROOT / "data/processed/fma_small_index.parquet"
+MODEL_PATH = ROOT / "artifacts/knn_audio_v2.joblib"
 
 
 def _load_features(feat_path: Path) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:

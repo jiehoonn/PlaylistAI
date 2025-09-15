@@ -136,6 +136,64 @@ def extract_features_full(
     log.info("Saved features for %d tracks → %s", len(features), out_path)
     return out_path
 
+def _agg(mat: np.ndarray) -> np.ndarray:
+    """mean/std along time for a (F x T) matrix (or 1 x T)."""
+    return np.concatenate([mat.mean(axis=1), mat.std(axis=1)])
+
+def compute_features_v2(audio_path: Path, sr: int = 22050) -> np.ndarray | None:
+    """
+    MFCC(13) + CHROMA(12) + spectral stats + tempo:
+      26 + 24 + 2+2+2+2+2 + 1 = 61 dims
+    """
+    try:
+        y, _ = librosa.load(audio_path, sr=sr, mono=True)
+    except Exception:
+        return None
+    if y.size < sr:
+        return None
+
+    # Mel-spectrogram (dB) for MFCCs
+    M = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
+    M_db = librosa.power_to_db(M, ref=np.max)
+
+    # MFCCs (13)
+    mfcc = librosa.feature.mfcc(S=M_db, n_mfcc=13)                 # 13 x T  -> 26
+    # Chroma (12)
+    chroma = librosa.feature.chroma_cqt(y=y, sr=sr)                # 12 x T  -> 24
+
+    # Spectral one-band features (1 x T each) -> 2 each when agg
+    sc = librosa.feature.spectral_centroid(y=y, sr=sr)             # 1 x T
+    sb = librosa.feature.spectral_bandwidth(y=y, sr=sr)            # 1 x T
+    sr85 = librosa.feature.spectral_rolloff(y=y, sr=sr, roll_percent=0.85)  # 1 x T
+    sf = librosa.feature.spectral_flatness(y=y)                    # 1 x T
+    zcr = librosa.feature.zero_crossing_rate(y)                    # 1 x T
+
+    # Tempo (scalar)
+    tempo = librosa.feature.rhythm.tempo(y=y, sr=sr, aggregate=np.mean).reshape(1)
+
+    vec = np.concatenate([
+        _agg(mfcc),           # 26
+        _agg(chroma),         # 24
+        _agg(sc), _agg(sb), _agg(sr85), _agg(sf), _agg(zcr),  # 2*5 = 10
+        tempo                 # 1
+    ])
+    # total = 61
+    return vec
+
+def extract_features_full_v2(index_path: Path,
+                             out_path: Path = Path("data/processed/fma_small_feats_v2.parquet")) -> Path:
+    df = pd.read_parquet(index_path)
+    rows = []
+    for _, r in tqdm(df.iterrows(), total=len(df), desc="extracting features v2"):
+        v = compute_features_v2(Path(r["audio_path"]))
+        if v is None:
+            continue
+        rows.append({"track_id": int(r["track_id"]), "feature": v})
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_parquet(out_path, index=False)
+    print(f"Saved v2 features for {len(rows)} tracks → {out_path}")
+    return out_path
+
 
 if __name__ == "__main__":
     import argparse
