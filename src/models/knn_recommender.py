@@ -312,6 +312,96 @@ def display_hybrid(seed_track_id: int, top: int = 10, index_path: Path = INDEX_P
     sub["score"] = [scores[order[tid]] for tid in sub["track_id"]]
     print(f"\nTop {top} (hybrid: audio+meta) for seed {seed_track_id}:\n")
     print(sub.to_string(index=False))
+
+def _features_for(tids: list[int], feat_path: Path, scaler: StandardScaler) -> np.ndarray:
+    """Return normalized feature rows for given track_ids (order-preserving)."""
+    df = pd.read_parquet(feat_path)[["track_id","feature"]].copy()
+    lut = df.set_index("track_id")["feature"].to_dict()
+    X = np.stack([lut[int(t)] for t in tids])
+    X = scaler.transform(X)
+    return normalize(X, norm="l2")
+
+def build_playlist(
+    seed_track_id: int,
+    n: int = 50,
+    candidate_k: int = 500,
+    lambda_mmr: float = 0.3,            # 0=diversity only, 1=similarity only
+    max_per_artist: int = 2,
+    max_per_album: int = 3,
+    feat_path: Path = FEAT_PATH,
+    model_path: Path = MODEL_PATH,
+    index_path: Path = INDEX_PATH,
+) -> list[int]:
+    """Return a 50-track playlist using hybrid scores + MMR with artist/album caps."""
+    # 1) candidates & base scores (hybrid)
+    cand_ids, base_scores = recommend_hybrid(seed_track_id, top=candidate_k)
+    base_scores = np.array(base_scores, dtype=float)
+
+    # 2) audio similarity matrix among candidates (cosine on normalized features)
+    payload = joblib.load(model_path)
+    scaler: StandardScaler = payload["scaler"]
+    Xc = _features_for(cand_ids, feat_path, scaler)         # (K, D)
+    # pairwise cosine sim via dot product (K x K)
+    sim = (Xc @ Xc.T).astype(float)
+
+    # 3) metadata for caps
+    meta = pd.read_parquet(index_path)[["track_id","artist_name","album_title"]].copy()
+    meta["track_id"] = meta["track_id"].astype(int)
+    m = meta.set_index("track_id").to_dict(orient="index")
+
+    selected: list[int] = []
+    artist_ct: dict[str,int] = {}
+    album_ct: dict[str,int] = {}
+
+    # greedy MMR
+    taken = np.zeros(len(cand_ids), dtype=bool)
+    while len(selected) < n and (~taken).any():
+        best_idx = None
+        best_score = -1e9
+        for i, tid in enumerate(cand_ids):
+            if taken[i]:
+                continue
+            art = (m.get(tid, {}).get("artist_name") or "")
+            alb = (m.get(tid, {}).get("album_title") or "")
+            if artist_ct.get(art, 0) >= max_per_artist:
+                continue
+            if album_ct.get(alb, 0) >= max_per_album:
+                continue
+
+            # diversity term: max similarity to any already selected
+            if not selected:
+                div_pen = 0.0
+            else:
+                sel_idxs = [cand_ids.index(t) for t in selected]
+                div_pen = float(sim[i, sel_idxs].max())
+
+            mmr = lambda_mmr * float(base_scores[i]) - (1.0 - lambda_mmr) * div_pen
+            if mmr > best_score:
+                best_score, best_idx = mmr, i
+
+        if best_idx is None:
+            break  # no candidate passes caps
+
+        taken[best_idx] = True
+        chosen_tid = cand_ids[best_idx]
+        selected.append(chosen_tid)
+        a = (m.get(chosen_tid, {}).get("artist_name") or "")
+        al = (m.get(chosen_tid, {}).get("album_title") or "")
+        artist_ct[a] = artist_ct.get(a, 0) + 1
+        album_ct[al] = album_ct.get(al, 0) + 1
+
+    return selected
+
+def display_playlist(seed_track_id: int, n: int = 50, index_path: Path = INDEX_PATH) -> None:
+    tids = build_playlist(seed_track_id, n=n)
+    idx_df = pd.read_parquet(index_path)
+    cols = ["track_id","artist_name","track_title","album_title","track_genre_top"]
+    order = {tid:i for i, tid in enumerate(tids)}
+    sub = idx_df[idx_df["track_id"].isin(tids)][cols].copy()
+    sub["order"] = sub["track_id"].map(order)
+    sub = sub.sort_values("order").drop(columns="order")
+    print(f"\nMMR playlist ({n}) for seed {seed_track_id}:\n")
+    print(sub.to_string(index=False))
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="KNN MFCC recommender")
@@ -327,6 +417,8 @@ if __name__ == "__main__":
     parser.add_argument("--w-year",  type=float, default=0.10)
     parser.add_argument("--artist-penalty", type=float, default=0.05)
     parser.add_argument("--candidate-k", type=int, default=200)
+    parser.add_argument("--playlist", type=int, help="Seed track_id to build a 50-track MMR playlist for")
+    parser.add_argument("--n", type=int, default=50, help="Playlist length")
     args = parser.parse_args()
 
     handled = False
@@ -342,5 +434,7 @@ if __name__ == "__main__":
                     w_tempo=args.w_tempo, w_year=args.w_year,
                     artist_penalty=args.artist_penalty, candidate_k=args.candidate_k)
         handled = True
+    if getattr(args, "playlist", None) is not None:
+        display_playlist(args.playlist, n=args.n); handled = True
     if not handled:
         parser.print_help()
