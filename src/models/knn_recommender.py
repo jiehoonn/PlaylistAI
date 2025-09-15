@@ -145,16 +145,89 @@ def display(seed_track_id: int, top: int = 10, index_path: Path = INDEX_PATH) ->
     print(sub.to_string(index=False))
 
 
+def recommend_candidates(
+    seed_track_id: int,
+    candidate_k: int = 200,
+    feat_path: Path = FEAT_PATH,
+    model_path: Path = MODEL_PATH,
+) -> tuple[list[int], list[float]]:
+    """Get a larger candidate set (ids, distances) before re-ranking."""
+    return recommend(seed_track_id, k=candidate_k, feat_path=feat_path, model_path=model_path)
+
+
+def recommend_reranked(
+    seed_track_id: int,
+    top: int = 50,
+    candidate_k: int = 200,
+    genre_weight: float = 0.15,   # +0.15 if same top-genre
+    artist_penalty: float = 0.05, # −0.05 per prior occurrence of the same artist
+    index_path: Path = INDEX_PATH,
+) -> tuple[list[int], list[float]]:
+    """Rerank KNN candidates by (similarity + genre bonus − artist penalty)."""
+    rec_ids, dists = recommend_candidates(seed_track_id, candidate_k)
+    idx_df = pd.read_parquet(index_path)[["track_id","artist_name","track_genre_top"]]
+    idx_df["track_id"] = idx_df["track_id"].astype(int)
+
+    # Seed metadata
+    seed_meta = idx_df[idx_df["track_id"] == int(seed_track_id)]
+    seed_genre = seed_meta["track_genre_top"].iloc[0] if not seed_meta.empty else None
+
+    # Lookup metadata for candidates
+    meta = idx_df[idx_df["track_id"].isin(rec_ids)].set_index("track_id").to_dict(orient="index")
+
+    # Convert cosine distance -> similarity (higher is better)
+    sim = 1.0 - np.clip(np.array(dists, dtype=float), 0.0, 1.0)
+
+    scores = []
+    artist_counts: dict[str, int] = {}
+    for tid, s in zip(rec_ids, sim):
+        info = meta.get(int(tid), {})
+        artist = info.get("artist_name", "")
+        genre  = info.get("track_genre_top", None)
+
+        g_bonus = genre_weight if (seed_genre is not None and genre == seed_genre) else 0.0
+        a_pen   = artist_penalty * artist_counts.get(artist, 0)
+
+        score = float(s + g_bonus - a_pen)
+        scores.append(score)
+        artist_counts[artist] = artist_counts.get(artist, 0) + 1
+
+    # Top-N by score, keeping candidate order only for tie-break
+    order = np.argsort(-np.array(scores))[:top]
+    final_ids    = [int(rec_ids[i]) for i in order]
+    final_scores = [float(scores[i]) for i in order]
+    return final_ids, final_scores
+
+
+def display_reranked(seed_track_id: int, top: int = 10, index_path: Path = INDEX_PATH) -> None:
+    rec_ids, scores = recommend_reranked(seed_track_id, top=top, index_path=index_path)
+    idx_df = pd.read_parquet(index_path)
+    cols = ["track_id","artist_name","track_title","album_title","track_genre_top"]
+
+    order = {tid:i for i, tid in enumerate(rec_ids)}
+    sub = idx_df[idx_df["track_id"].isin(rec_ids)][cols].copy()
+    sub["order"] = sub["track_id"].map(order)
+    sub = sub.sort_values("order").drop(columns="order")
+    sub["score"] = [scores[order[tid]] for tid in sub["track_id"]]
+    print(f"\nTop {top} (reranked) for seed {seed_track_id}:\n")
+    print(sub.to_string(index=False))
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="KNN MFCC recommender")
     parser.add_argument("--build", action="store_true", help="Fit and save the KNN model")
     parser.add_argument("--query", type=int, help="Seed track_id to query recommendations for")
     parser.add_argument("--top", type=int, default=10, help="How many recs to print in --query mode")
+    parser.add_argument("--query-rerank", type=int, help="Seed track_id to query with genre/diversity re-rank")
+    parser.add_argument("--genre-weight", type=float, default=0.15)
+    parser.add_argument("--artist-penalty", type=float, default=0.05)
+    parser.add_argument("--candidate-k", type=int, default=200)
     args = parser.parse_args()
 
     if args.build:
         build_model()
     if args.query is not None:
         display(args.query, top=args.top)
-    if not args.build and args.query is None:
+    if getattr(args, "query_rerank", None) is not None:
+        display_reranked(args.query_rerank, top=args.top)
+    if (not args.build) and (args.query is None) and (getattr(args, "query_rerank", None) is None):
         parser.print_help()
