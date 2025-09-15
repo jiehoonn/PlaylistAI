@@ -29,6 +29,9 @@ from tqdm import tqdm
 # Even though we don't use FMA_SMALL_DIR directly here, instantiating
 # Settings will validate that the environment is configured correctly.
 from src.config import settings
+from src.utils.logging import get_logger
+
+log = get_logger(__name__)
 
 
 def mfcc_mean_std(
@@ -98,7 +101,7 @@ def tiny_feature_check(
         rows.append({"track_id": int(row["track_id"]), "feature": vec})
     out_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows).to_parquet(out_path, index=False)
-    print(f"Wrote {len(rows)} feature rows → {out_path}")
+    log.info("Wrote %d feature rows → %s", len(rows), out_path)
     return out_path
 
 
@@ -130,7 +133,7 @@ def extract_features_full(
         features.append({"track_id": int(row["track_id"]), "feature": vec})
     out_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(features).to_parquet(out_path, index=False)
-    print(f"Saved features for {len(features)} tracks → {out_path}")
+    log.info("Saved features for %d tracks → %s", len(features), out_path)
     return out_path
 
 

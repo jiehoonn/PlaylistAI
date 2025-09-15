@@ -1,12 +1,25 @@
 __pycache__/
-.venv/
+/.venv/
 .env
-*.log
-.ipynb_checkpoints/
 
-data/
-!data/.gitkeep
-models/
-!models/.gitkeep
+# Logs (root)
+/logs/**
+!/logs/.gitkeep
+*.log
+
+# Data & artifacts (root)
+/data/**
+!/data/.gitkeep
+/models/**
+!/models/.gitkeep
+/artifacts/**
+!/artifacts/.gitkeep
+
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+.ipynb_checkpoints/
 
 .DS_Store
