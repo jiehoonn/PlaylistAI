@@ -90,6 +90,7 @@ PlaylistAI/
 ├─ artifacts/                # trained models (joblib, etc.)
 ├─ logs/                     # runtime logs
 ├─ notebooks/                # optional notebooks
+├─ scripts/                  # evaluation & utility scripts (eval_recs.py, demo_eval.py)
 ├─ .env                      # your local FMA paths (see below)
 ├─ requirements.txt
 └─ .gitignore
@@ -351,7 +352,7 @@ Complete and validate the current small dataset implementation.
 4. ✅ **Unit tests (pytest)** _(COMPLETED)_  
    Comprehensive test suite with 50% coverage: data pipeline integrity, export functionality, KNN core components, error handling.
 
-5. **Offline evaluation script**  
+5. **Offline evaluation script** ✅ (COMPLETED)  
    `scripts/eval_recs.py` to compute: same-genre@k, unique-artist@k, avg |tempo diff|, year spread; write CSV to `artifacts/eval/`.
 
 6. **Full CLI configurability**  
