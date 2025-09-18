@@ -348,8 +348,8 @@ Complete and validate the current small dataset implementation.
 3. ✅ **Playlist export functionality** _(COMPLETED)_  
    Added `src/service/export.py` with M3U and CSV export, integrated CLI flags (`--export-m3u`, `--export-csv`).
 
-4. **Unit tests (pytest)**  
-   Smoke tests for: path mapping, ingest integrity, feature shape/no-nulls, model load/query, hybrid output non-empty.
+4. ✅ **Unit tests (pytest)** _(COMPLETED)_  
+   Comprehensive test suite with 50% coverage: data pipeline integrity, export functionality, KNN core components, error handling.
 
 5. **Offline evaluation script**  
    `scripts/eval_recs.py` to compute: same-genre@k, unique-artist@k, avg |tempo diff|, year spread; write CSV to `artifacts/eval/`.
