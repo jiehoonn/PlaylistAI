@@ -131,9 +131,10 @@ def recommend(
     return rec_ids, rec_dists
 
 
-def display(seed_track_id: int, top: int = 10, index_path: Path = INDEX_PATH) -> None:
+def display(seed_track_id: int, top: int = 10, index_path: Path = INDEX_PATH, 
+           feat_path: Path = FEAT_PATH, model_path: Path = MODEL_PATH) -> None:
     """Pretty-print top-N recs with metadata."""
-    rec_ids, rec_dists = recommend(seed_track_id, k=top)
+    rec_ids, rec_dists = recommend(seed_track_id, k=top, feat_path=feat_path, model_path=model_path)
     idx_df = pd.read_parquet(index_path)
     cols = ["track_id", "artist_name", "track_title", "album_title", "track_genre_top"]
 
@@ -406,11 +407,26 @@ def display_playlist(seed_track_id: int, n: int = 50, index_path: Path = INDEX_P
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="KNN MFCC recommender")
+    
+    # Core operations
     parser.add_argument("--build", action="store_true", help="Fit and save the KNN model")
     parser.add_argument("--query", type=int, help="Seed track_id to query recommendations for")
     parser.add_argument("--query-hybrid", type=int, help="Seed track_id to query with audio+metadata hybrid rerank")
-    parser.add_argument("--top", type=int, default=10, help="How many recs to print in --query mode")
     parser.add_argument("--query-rerank", type=int, help="Seed track_id to query with genre/diversity re-rank")
+    parser.add_argument("--playlist", type=int, help="Seed track_id to build a 50-track MMR playlist for")
+    
+    # File path configuration
+    parser.add_argument("--feat-path", type=str, default=str(FEAT_PATH), 
+                       help=f"Path to features parquet file (default: {FEAT_PATH})")
+    parser.add_argument("--index-path", type=str, default=str(INDEX_PATH),
+                       help=f"Path to track index parquet file (default: {INDEX_PATH})")
+    parser.add_argument("--meta-path", type=str, default=str(META_PATH),
+                       help=f"Path to metadata parquet file (default: {META_PATH})")
+    parser.add_argument("--model-path", type=str, default=str(ROOT / "artifacts/knn_audio_v2.joblib"),
+                       help="Path to save/load KNN model (default: artifacts/knn_audio_v2.joblib)")
+    
+    # Algorithm parameters
+    parser.add_argument("--top", type=int, default=10, help="How many recs to print in --query mode")
     parser.add_argument("--genre-weight", type=float, default=0.15)
     parser.add_argument("--w-audio", type=float, default=1.0)
     parser.add_argument("--w-genre", type=float, default=0.35)
@@ -418,32 +434,39 @@ if __name__ == "__main__":
     parser.add_argument("--w-year",  type=float, default=0.10)
     parser.add_argument("--artist-penalty", type=float, default=0.05)
     parser.add_argument("--candidate-k", type=int, default=200)
-    parser.add_argument("--playlist", type=int, help="Seed track_id to build a 50-track MMR playlist for")
     parser.add_argument("--n", type=int, default=50, help="Playlist length")
     parser.add_argument("--lambda-mmr", type=float, default=0.3, help="MMR balance: 0=diversity only, 1=similarity only")
     parser.add_argument("--max-per-artist", type=int, default=2, help="Maximum tracks per artist in playlist")
     parser.add_argument("--max-per-album", type=int, default=3, help="Maximum tracks per album in playlist")
+    
+    # Export options
     parser.add_argument("--export-m3u", type=str, help="Export playlist to M3U file (provide output path)")
     parser.add_argument("--export-csv", type=str, help="Export playlist to CSV file (provide output path)")
 
     args = parser.parse_args()
+    
+    # Use CLI arguments for paths (don't modify globals)
+    feat_path = Path(args.feat_path)
+    index_path = Path(args.index_path)
+    meta_path = Path(args.meta_path)
+    model_path = Path(args.model_path)
 
     handled = False
     if args.build:
-        build_model(); handled = True
+        build_model(feat_path=feat_path, model_path=model_path); handled = True
     if args.query is not None:
-        display(args.query, top=args.top); handled = True
+        display(args.query, top=args.top, index_path=index_path, feat_path=feat_path, model_path=model_path); handled = True
     if getattr(args, "query_rerank", None) is not None:
-        display_reranked(args.query_rerank, top=args.top); handled = True
+        display_reranked(args.query_rerank, top=args.top, index_path=index_path); handled = True
     if getattr(args, "query_hybrid", None) is not None:
-        display_hybrid(args.query_hybrid, top=args.top,
+        display_hybrid(args.query_hybrid, top=args.top, index_path=index_path,
                     w_audio=args.w_audio, w_genre=args.w_genre,
                     w_tempo=args.w_tempo, w_year=args.w_year,
                     artist_penalty=args.artist_penalty, candidate_k=args.candidate_k)
         handled = True
     if getattr(args, "playlist", None) is not None:
         playlist_ids = build_playlist(args.playlist, n=args.n, lambda_mmr=args.lambda_mmr, max_per_artist=args.max_per_artist, max_per_album=args.max_per_album)
-        display_playlist(args.playlist, n=args.n)
+        display_playlist(args.playlist, n=args.n, index_path=index_path)
         
         # Handle export options
         if args.export_m3u or args.export_csv:

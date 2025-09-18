@@ -355,7 +355,7 @@ Complete and validate the current small dataset implementation.
 5. **Offline evaluation script** ✅ (COMPLETED)  
    `scripts/eval_recs.py` to compute: same-genre@k, unique-artist@k, avg |tempo diff|, year spread; write CSV to `artifacts/eval/`.
 
-6. **Full CLI configurability**  
+6. **Full CLI configurability** ✅ (COMPLETED)  
    Add `--feat-path`, `--index-path`, `--meta-path`, `--model-path` to all modes (build/query/hybrid/playlist).
 
 ### **Phase 2: Scale Preparation** (Weeks 5-6)
