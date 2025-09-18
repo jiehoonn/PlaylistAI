@@ -342,11 +342,11 @@ Complete and validate the current small dataset implementation.
 1. ✅ **Expose MMR knobs via CLI** _(COMPLETED)_  
    Added `--lambda-mmr`, `--max-per-artist`, `--max-per-album` to playlist command.
 
-2. **Create .env.example**  
-   Template configuration file for easy onboarding.
+2. ✅ **Create .env.example** _(COMPLETED)_  
+   Template configuration file for easy onboarding with FMA paths and logging settings.
 
-3. **Playlist export functionality**  
-   Add `src/service/export.py` with `write_m3u` and `write_csv`, plus CLI flags (`--export-m3u`, `--export-csv`).
+3. ✅ **Playlist export functionality** _(COMPLETED)_  
+   Added `src/service/export.py` with M3U and CSV export, integrated CLI flags (`--export-m3u`, `--export-csv`).
 
 4. **Unit tests (pytest)**  
    Smoke tests for: path mapping, ingest integrity, feature shape/no-nulls, model load/query, hybrid output non-empty.
