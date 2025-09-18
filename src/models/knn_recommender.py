@@ -419,6 +419,10 @@ if __name__ == "__main__":
     parser.add_argument("--candidate-k", type=int, default=200)
     parser.add_argument("--playlist", type=int, help="Seed track_id to build a 50-track MMR playlist for")
     parser.add_argument("--n", type=int, default=50, help="Playlist length")
+    parser.add_argument("--lambda-mmr", type=float, default=0.3, help="MMR balance: 0=diversity only, 1=similarity only")
+    parser.add_argument("--max-per-artist", type=int, default=2, help="Maximum tracks per artist in playlist")
+    parser.add_argument("--max-per-album", type=int, default=3, help="Maximum tracks per album in playlist")
+
     args = parser.parse_args()
 
     handled = False
@@ -435,6 +439,7 @@ if __name__ == "__main__":
                     artist_penalty=args.artist_penalty, candidate_k=args.candidate_k)
         handled = True
     if getattr(args, "playlist", None) is not None:
+        playlist_ids = build_playlist(args.playlist, n=args.n, lambda_mmr=args.lambda_mmr, max_per_artist=args.max_per_artist, max_per_album=args.max_per_album)
         display_playlist(args.playlist, n=args.n); handled = True
     if not handled:
         parser.print_help()

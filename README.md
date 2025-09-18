@@ -333,45 +333,71 @@ subprocess.run(["afplay", row.audio_path])
 
 ---
 
-## Next Steps Plan
+## Development Roadmap
 
-1. **Expose MMR knobs via CLI**  
-   Add `--lambda-mmr`, `--max-per-artist`, `--max-per-album` to the playlist command.  
-   Default suggestion: `lambda_mmr=0.35`, `max_per_artist=1`, `max_per_album=2`.
+### **Phase 1: Polish Core System** (Weeks 1-4)
 
-2. **Offline evaluation script**  
-   `scripts/eval_recs.py` to compute: same-genre@k, unique-artist@k, avg |tempo diff|, year spread; write CSV to `artifacts/eval/`.
+Complete and validate the current small dataset implementation.
 
-3. **Unit tests (pytest)**  
+1. ✅ **Expose MMR knobs via CLI** _(COMPLETED)_  
+   Added `--lambda-mmr`, `--max-per-artist`, `--max-per-album` to playlist command.
+
+2. **Create .env.example**  
+   Template configuration file for easy onboarding.
+
+3. **Playlist export functionality**  
+   Add `src/service/export.py` with `write_m3u` and `write_csv`, plus CLI flags (`--export-m3u`, `--export-csv`).
+
+4. **Unit tests (pytest)**  
    Smoke tests for: path mapping, ingest integrity, feature shape/no-nulls, model load/query, hybrid output non-empty.
 
-4. **Metadata hardening**  
-   Keep ndarray-safe tempo backfill; log coverage counts (tempo non-null, year non-null, genres_all present).
-
-5. **Playlist export**  
-   Add `src/service/export.py` with `write_m3u` and `write_csv`, plus a CLI flag (`--playlist-out`, `--out-path`).
+5. **Offline evaluation script**  
+   `scripts/eval_recs.py` to compute: same-genre@k, unique-artist@k, avg |tempo diff|, year spread; write CSV to `artifacts/eval/`.
 
 6. **Full CLI configurability**  
    Add `--feat-path`, `--index-path`, `--meta-path`, `--model-path` to all modes (build/query/hybrid/playlist).
 
-7. **Richer audio features (optional)**  
-   Add chroma/key features (e.g., `librosa.feature.chroma_cqt`) and a small key-similarity weight in the hybrid reranker.
+### **Phase 2: Scale Preparation** (Weeks 5-6)
 
-8. **Approximate nearest neighbors (scale-up)**  
-   New `ann_recommender.py` using HNSW (hnswlib) or FAISS; same API as current KNN.
+Build infrastructure for large datasets before FMA Large migration.
 
-9. **Minimal API for the webapp**  
-   A small FastAPI service: `/health`, `/recommend?track_id=&top=`, `/playlist?track_id=&n=`; loads artifacts once on startup.
+7. **Approximate nearest neighbors (CRITICAL)**  
+   New `ann_recommender.py` using HNSW (hnswlib); same API as current KNN for seamless switching.
 
-10. **Simple UI prototype**  
-    Streamlit or a tiny React client hitting FastAPI; search by track or track_id, show recs, export M3U.
+8. **Guardrails & error handling**  
+   Friendly messages if seed missing, metadata sparse, or path misconfigurations; assert tempo coverage before enabling `w_tempo`.
 
-11. **DX & reproducibility**  
-    Makefile (or justfile) targets: ingest, features, metadata, build, query, hybrid, playlist, eval.  
-    Add `.env.example` and versioned artifacts (`artifacts/knn_audio_v2_small_YYYYMMDD.joblib`).
+9. **DX & reproducibility improvements**  
+   Add versioned artifacts (`artifacts/knn_audio_v2_small_YYYYMMDD.joblib`), improved logging, and dataset validation.
 
-12. **Guardrails & errors**  
-    Friendly messages if seed is missing, metadata sparse, or path misconfigurations; assert tempo coverage before enabling `w_tempo`.
+### **Phase 3: FMA Large Integration** (Weeks 7-8)
+
+Scale to 100K+ track dataset with performance optimizations.
+
+10. **FMA Large dataset support**  
+    Update ingest/features/metadata pipeline for `fma_large` subset; memory-efficient processing; batch operations.
+
+11. **Performance benchmarking & evaluation**  
+    Temporal split evaluation (recent tracks as test); scalability metrics; quality comparisons vs small dataset.
+
+12. **Memory & storage optimizations**  
+    Chunked processing, memory-mapped arrays, efficient metadata joins for large-scale operations.
+
+### **Phase 4: Production Features** (Weeks 9-12)
+
+User-facing features and deployment preparation.
+
+13. **Richer audio features (optional)**  
+    Add chroma/key features (e.g., `librosa.feature.chroma_cqt`) and key-similarity weight in hybrid reranker.
+
+14. **Minimal FastAPI service**  
+    `/health`, `/recommend?track_id=&top=`, `/playlist?track_id=&n=`; loads artifacts once on startup.
+
+15. **Simple UI prototype**  
+    Streamlit interface: search by track/track_id, show recommendations, export playlists.
+
+16. **Deployment automation**  
+    Makefile/justfile targets: ingest, features, metadata, build, query, hybrid, playlist, eval, deploy.
 
 ---
 
