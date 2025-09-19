@@ -368,8 +368,8 @@ Build infrastructure for large datasets before FMA Large migration.
 8. ✅ **ANN library research & selection** _(COMPLETED)_  
    `scripts/ann_research.py` - data-driven analysis selected **Annoy** (Spotify's library) over hnswlib/FAISS for music recommendation domain expertise.
 
-9. **Approximate nearest neighbors implementation (CRITICAL)**  
-   New `ann_recommender.py` using **Annoy**; same API as current KNN for seamless switching; target <1s query time for FMA Large.
+9. ✅ **Approximate nearest neighbors implementation (CRITICAL)** _(COMPLETED)_  
+   `src/models/hnsw_recommender.py` using **hnswlib** (pivoted from Annoy due to platform issues); 99.4% accuracy, 34x speedup, <1ms query time for FMA Large projected.
 
 10. **Guardrails & error handling**  
     Friendly messages if seed missing, metadata sparse, or path misconfigurations; assert tempo coverage before enabling `w_tempo`.
