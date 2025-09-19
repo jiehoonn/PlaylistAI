@@ -29,12 +29,16 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from src.models.knn_recommender import (
-    _load_features, _load_meta, recommend_hybrid as knn_recommend_hybrid,
+    _load_features, recommend_hybrid as knn_recommend_hybrid,
     build_playlist as knn_build_playlist, display as knn_display,
     display_hybrid as knn_display_hybrid, display_playlist as knn_display_playlist,
     recommend as knn_recommend
 )
 from src.utils.logging import get_logger
+from src.utils.guardrails import (
+    GuardrailValidator, validate_recommendation_request,
+    RecommendationSystemError, ConfigurationError
+)
 
 log = get_logger(__name__)
 
@@ -67,8 +71,19 @@ class HNSWRecommender:
         self.hnsw_idx_to_track_id = None
         
     def load_data(self) -> None:
-        """Load features and preprocessing components."""
+        """Load features and preprocessing components with validation."""
         log.info("Loading features and scaler...")
+        
+        # Validate paths first
+        validator = GuardrailValidator()
+        try:
+            validator.validate_path_configuration(
+                self.feat_path, INDEX_PATH, META_PATH, self.model_path
+            )
+        except ConfigurationError as e:
+            log.error(str(e))
+            raise
+            
         self.features_df, _, self.track_ids = _load_features(self.feat_path)
         
         # Load scaler from existing KNN model
@@ -76,6 +91,12 @@ class HNSWRecommender:
             payload = joblib.load(self.model_path)
             self.scaler = payload["scaler"]
             log.info(f"Loaded scaler from {self.model_path}")
+            
+            # Validate model compatibility
+            try:
+                validator.validate_model_compatibility(self.model_path, self.features_df)
+            except ConfigurationError as e:
+                log.warning(str(e))
         else:
             log.warning(f"No existing model at {self.model_path}, will need to fit scaler")
             
@@ -212,8 +233,14 @@ class HNSWRecommender:
         if self.hnsw_index is None:
             self.load_index()
             
-        if seed_track_id not in self.track_id_to_hnsw_idx:
-            raise ValueError(f"Track ID {seed_track_id} not found in index")
+        # Validate recommendation request with helpful error messages
+        try:
+            validate_recommendation_request(
+                seed_track_id, top, list(self.track_ids)
+            )
+        except RecommendationSystemError as e:
+            log.error(str(e))
+            raise
             
         # Set search parameter (default to good balance)
         if ef is None:

@@ -371,11 +371,11 @@ Build infrastructure for large datasets before FMA Large migration.
 9. ✅ **Approximate nearest neighbors implementation (CRITICAL)** _(COMPLETED)_  
    `src/models/hnsw_recommender.py` using **hnswlib** (pivoted from Annoy due to platform issues); 99.4% accuracy, 34x speedup, <1ms query time for FMA Large projected.
 
-10. **Guardrails & error handling**  
-    Friendly messages if seed missing, metadata sparse, or path misconfigurations; assert tempo coverage before enabling `w_tempo`.
+10. ✅ **Guardrails & error handling** _(COMPLETED)_  
+    `src/utils/guardrails.py` - comprehensive validation with helpful error messages for seed tracks, tempo coverage, data alignment, and path configuration.
 
-11. **DX & reproducibility improvements**  
-    Add versioned artifacts (`artifacts/knn_audio_v2_small_YYYYMMDD.joblib`), improved logging, and dataset validation.
+11. ✅ **DX & reproducibility improvements** _(COMPLETED)_  
+    `src/utils/versioning.py` - versioned artifacts with timestamps, dataset fingerprinting, build provenance tracking, and reproducibility metadata.
 
 ### **Phase 3: FMA Large Integration** (Weeks 7-8)
 
