@@ -352,52 +352,58 @@ Complete and validate the current small dataset implementation.
 4. ✅ **Unit tests (pytest)** _(COMPLETED)_  
    Comprehensive test suite with 50% coverage: data pipeline integrity, export functionality, KNN core components, error handling.
 
-5. **Offline evaluation script** ✅ (COMPLETED)  
+5. ✅ **Offline evaluation script** _(COMPLETED)_  
    `scripts/eval_recs.py` to compute: same-genre@k, unique-artist@k, avg |tempo diff|, year spread; write CSV to `artifacts/eval/`.
 
-6. **Full CLI configurability** ✅ (COMPLETED)  
+6. ✅ **Full CLI configurability** _(COMPLETED)_  
    Add `--feat-path`, `--index-path`, `--meta-path`, `--model-path` to all modes (build/query/hybrid/playlist).
 
 ### **Phase 2: Scale Preparation** (Weeks 5-6)
 
 Build infrastructure for large datasets before FMA Large migration.
 
-7. **Approximate nearest neighbors (CRITICAL)**  
-   New `ann_recommender.py` using HNSW (hnswlib); same API as current KNN for seamless switching.
+7. ✅ **Performance audit & bottleneck identification** _(COMPLETED)_  
+   `scripts/performance_audit.py` - comprehensive profiling revealed memory scales well (0.9GB for FMA Large) but query time needs optimization (6+ seconds → <1s target).
 
-8. **Guardrails & error handling**  
-   Friendly messages if seed missing, metadata sparse, or path misconfigurations; assert tempo coverage before enabling `w_tempo`.
+8. ✅ **ANN library research & selection** _(COMPLETED)_  
+   `scripts/ann_research.py` - data-driven analysis selected **Annoy** (Spotify's library) over hnswlib/FAISS for music recommendation domain expertise.
 
-9. **DX & reproducibility improvements**  
-   Add versioned artifacts (`artifacts/knn_audio_v2_small_YYYYMMDD.joblib`), improved logging, and dataset validation.
+9. **Approximate nearest neighbors implementation (CRITICAL)**  
+   New `ann_recommender.py` using **Annoy**; same API as current KNN for seamless switching; target <1s query time for FMA Large.
+
+10. **Guardrails & error handling**  
+    Friendly messages if seed missing, metadata sparse, or path misconfigurations; assert tempo coverage before enabling `w_tempo`.
+
+11. **DX & reproducibility improvements**  
+    Add versioned artifacts (`artifacts/knn_audio_v2_small_YYYYMMDD.joblib`), improved logging, and dataset validation.
 
 ### **Phase 3: FMA Large Integration** (Weeks 7-8)
 
 Scale to 100K+ track dataset with performance optimizations.
 
-10. **FMA Large dataset support**  
+12. **FMA Large dataset support**  
     Update ingest/features/metadata pipeline for `fma_large` subset; memory-efficient processing; batch operations.
 
-11. **Performance benchmarking & evaluation**  
+13. **Performance benchmarking & evaluation**  
     Temporal split evaluation (recent tracks as test); scalability metrics; quality comparisons vs small dataset.
 
-12. **Memory & storage optimizations**  
+14. **Memory & storage optimizations**  
     Chunked processing, memory-mapped arrays, efficient metadata joins for large-scale operations.
 
 ### **Phase 4: Production Features** (Weeks 9-12)
 
 User-facing features and deployment preparation.
 
-13. **Richer audio features (optional)**  
+15. **Richer audio features (optional)**  
     Add chroma/key features (e.g., `librosa.feature.chroma_cqt`) and key-similarity weight in hybrid reranker.
 
-14. **Minimal FastAPI service**  
+16. **Minimal FastAPI service**  
     `/health`, `/recommend?track_id=&top=`, `/playlist?track_id=&n=`; loads artifacts once on startup.
 
-15. **Simple UI prototype**  
+17. **Simple UI prototype**  
     Streamlit interface: search by track/track_id, show recommendations, export playlists.
 
-16. **Deployment automation**  
+18. **Deployment automation**  
     Makefile/justfile targets: ingest, features, metadata, build, query, hybrid, playlist, eval, deploy.
 
 ---
